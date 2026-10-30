@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IaC for a small IoT telemetry pipeline
+
+Parameters:
+  StudentTag:
+    Type: String
+    Default: student01
+    AllowedPattern: '^[a-zA-Z0-9-]+$'
+    Description: Short identifier for this student
+  CertificateArn:
+    Type: String
+    Description: ARN of the existing ACTIVE AWS IoT certificate
+
+Resources:
+  TelemetryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'iot-iac-${StudentTag}-telemetry'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: deviceId
+          AttributeType: S
+        - AttributeName: eventTime
+          AttributeType: N
+      KeySchema:
+        - AttributeName: deviceId
+          KeyType: HASH
+        - AttributeName: eventTime
+          KeyType: RANGE
+      Tags:
+        - Key: Lab
+          Value: IoT-IaC
+        - Key: Student
+          Value: !Ref StudentTag
+
+  SensorThing:
+    Type: AWS::IoT::Thing
+    Properties:
+      ThingName: !Sub 'IAC-${StudentTag}-Thing'
+      AttributePayload:
+        Attributes:
+          deviceType: simulated-temperature
+          location: classroom
+          managedBy: cloudformation
+
+  SensorPolicy:
+    Type: AWS::IoT::Policy
+    Properties:
+      PolicyName: !Sub 'IAC-${StudentTag}-Policy'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: iot:*
+            Resource: "*"
+
+  ThingCertificateAttachment:
+    Type: AWS::IoT::ThingPrincipalAttachment
+    Properties:
+      ThingName: !Ref SensorThing
+      Principal: !Ref CertificateArn
+
+  PolicyCertificateAttachment:
+    Type: AWS::IoT::PolicyPrincipalAttachment
+    Properties:
+      PolicyName: !Ref SensorPolicy
+      Principal: !Ref CertificateArn
+
+  TelemetryRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub 'IAC_${StudentTag}_TelemetryToDDB'
+      Tags:
+        - Key: Lab
+          Value: IoT-IaC
+        - Key: Student
+          Value: !Ref StudentTag
+      TopicRulePayload:
+        RuleDisabled: false
+        AwsIotSqlVersion: '2016-03-23'
+        Description: Store telemetry at or above 25 C
+        Sql: !Sub "SELECT *, timestamp() AS eventTime FROM 'iot-lab/${StudentTag}/telemetry' WHERE temperature >= 25"
+        Actions:
+          - DynamoDB:
+              TableName: !Ref TelemetryTable
+              HashKeyField: deviceId
+              HashKeyType: STRING
+              HashKeyValue: '${deviceId}'
+              RangeKeyField: eventTime
+              RangeKeyType: NUMBER
+              RangeKeyValue: '${eventTime}'
+              RoleArn: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/LabRole'
+
+Outputs:
+  ThingName:
+    Value: !Ref SensorThing
+  PolicyName:
+    Value: !Ref SensorPolicy
+  RuleName:
+    Value: !Ref TelemetryRule
+  TableName:
+    Value: !Ref TelemetryTable
+  InputTopic:
+    Value: !Sub 'iot-lab/${StudentTag}/telemetry'
+  CertificateArn:
+    Value: !Ref CertificateArn
