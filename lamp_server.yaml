@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Minimal LAMP Server with Apache, PHP, MariaDB and test page
+
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 Key Pair
+
+  MyIP:
+    Type: String
+    Description: Your public IP in CIDR format (e.g. 1.2.3.4/32)
+
+Resources:
+
+  LampSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH and HTTP
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref MyIP
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  LampInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      KeyName: !Ref KeyPairName
+
+      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+
+      SecurityGroupIds:
+        - !Ref LampSecurityGroup
+
+      Tags:
+        - Key: Name
+          Value: LAMP-Test-Server
+
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+
+          dnf update -y
+
+          dnf install -y httpd
+          dnf install -y php
+          dnf install -y mariadb105-server
+
+          systemctl enable httpd
+          systemctl start httpd
+
+          systemctl enable mariadb
+          systemctl start mariadb
+
+          cat <<EOF > /var/www/html/index.html
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>LAMP Test</title>
+          </head>
+          <body>
+            <h1>Hello from AWS EC2!</h1>
+            <p>Your LAMP server is working.</p>
+          </body>
+          </html>
+          EOF
+
+Outputs:
+
+  PublicIP:
+    Description: Public IP Address
+    Value: !GetAtt LampInstance.PublicIp
+
+  WebsiteURL:
+    Description: Website URL
+    Value: !Sub "http://${LampInstance.PublicIp}"
