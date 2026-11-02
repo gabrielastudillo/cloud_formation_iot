@@ -88,7 +88,7 @@ Resources:
               HashKeyValue: '${deviceId}'
               RangeKeyField: eventTime
               RangeKeyType: NUMBER
-              RangeKeyValue: '${eventTime}'
+              RangeKeyValue: '${timestamp()}'
               RoleArn: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/LabRole'
 
 Outputs:
